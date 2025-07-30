@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARN Change Form Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ARN Change Form Generator</h1>
+            <p>Upload your Excel file to automatically populate the ARN Change Request form</p>
+        </header>
+
+        <main>
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="messages">
+                        {% for message in messages %}
+                            <div class="alert alert-error">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <div class="upload-section">
+                <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-content">
+                            <div class="drop-icon">📄</div>
+                            <h3>Drag & Drop Excel File Here</h3>
+                            <p>or click to browse</p>
+                            <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" hidden>
+                            <button type="button" class="browse-btn" onclick="document.getElementById('fileInput').click()">
+                                Browse Files
+                            </button>
+                        </div>
+                        <div class="file-info" id="fileInfo" style="display: none;">
+                            <div class="file-name" id="fileName"></div>
+                            <div class="file-size" id="fileSize"></div>
+                        </div>
+                    </div>
+                    <button type="submit" class="upload-btn" id="uploadBtn" disabled>
+                        Generate ARN Form
+                    </button>
+                </form>
+            </div>
+
+            <div class="info-section">
+                <h3>Required Excel Format:</h3>
+                <div class="format-info">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Column A</th>
+                                <th>Column B</th>
+                                <th>Column C</th>
+                                <th>Column D</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Mutual Fund</td>
+                                <td>Folio No</td>
+                                <td>PAN</td>
+                                <td>Investor [First Holder only]</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p><strong>Note:</strong> Data should be in row 2 (row 1 contains headers)</p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>© 2024 ARN Change Form Generator</p>
+        </footer>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+
+        // Drag and drop functionality
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            // Check file type
+            const allowedTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            
+            if (!['xlsx', 'xls'].includes(fileExtension)) {
+                alert('Please select a valid Excel file (.xlsx or .xls)');
+                return;
+            }
+
+            // Update file input
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            fileInput.files = dataTransfer.files;
+
+            // Show file info
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.style.display = 'block';
+            
+            // Enable upload button
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Generate ARN Form';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Form submission
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Generating...';
+        });
+    </script>
+</body>
+</html>
