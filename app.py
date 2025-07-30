@@ -19,21 +19,36 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def read_excel_data(excel_file_path):
-    """Read data from Excel file and return as dictionary"""
+    """Read data from Excel file and return as list of dictionaries (one per row)"""
     workbook = None
     try:
         workbook = openpyxl.load_workbook(excel_file_path, read_only=True)
         sheet = workbook.active
         
-        # Get data from row 2 (row 1 contains headers)
-        data = {
-            'mutual_fund': sheet['A2'].value,
-            'folio_no': sheet['B2'].value,
-            'pan': sheet['C2'].value,
-            'investor': sheet['D2'].value
-        }
+        # Get all data rows (row 1 contains headers, data starts from row 2)
+        data_rows = []
+        max_row = sheet.max_row
         
-        return data
+        for row_num in range(2, max_row + 1):  # Start from row 2, go to last row
+            # Check if row has any data (skip completely empty rows)
+            mutual_fund = sheet[f'A{row_num}'].value
+            folio_no = sheet[f'B{row_num}'].value
+            pan = sheet[f'C{row_num}'].value
+            investor = sheet[f'D{row_num}'].value
+            
+            # Skip row if all cells are empty
+            if not any([mutual_fund, folio_no, pan, investor]):
+                continue
+                
+            data = {
+                'mutual_fund': mutual_fund or '',
+                'folio_no': folio_no or '',
+                'pan': pan or '',
+                'investor': investor or ''
+            }
+            data_rows.append(data)
+        
+        return data_rows if data_rows else None
     except Exception as e:
         print(f"Error reading Excel file: {str(e)}")
         return None
@@ -42,76 +57,104 @@ def read_excel_data(excel_file_path):
         if workbook:
             workbook.close()
 
-def populate_word_document(template_path, data, output_path):
-    """Populate Word document with Excel data while preserving exact formatting"""
+def populate_single_page(doc, data):
+    """Helper function to populate a single page with data"""
+    # Process paragraphs with precise formatting preservation
+    for paragraph in doc.paragraphs:
+        original_text = paragraph.text
+        
+        # Handle "Mutual Fund: " line (Paragraph 3)
+        if original_text.strip() == 'Mutual Fund:':
+            paragraph.clear()
+            # Add bold label
+            run1 = paragraph.add_run("  Mutual Fund: ")
+            run1.bold = True
+            # Add underlined value
+            run2 = paragraph.add_run(str(data['mutual_fund']))
+            run2.underline = True
+        
+        # Handle "Folio No:* ... PAN:* " line (Paragraph 4)
+        elif 'Folio No:*' in original_text and 'PAN:*' in original_text:
+            paragraph.clear()
+            # Add bold "Folio No:*" label
+            run1 = paragraph.add_run("      Folio No:* ")
+            run1.bold = True
+            # Add underlined folio number
+            run2 = paragraph.add_run(str(data['folio_no']))
+            run2.underline = True
+            # Add spacing
+            paragraph.add_run("                                                                                                          ")
+            # Add bold "PAN:*" label
+            run3 = paragraph.add_run("PAN:* ")
+            run3.bold = True
+            # Add underlined PAN
+            run4 = paragraph.add_run(str(data['pan']))
+            run4.underline = True
+        
+        # Handle "Investor [First Holder only]:  " line (Paragraph 5)
+        elif original_text.strip() == 'Investor [First Holder only]:':
+            paragraph.clear()
+            # Add bold label
+            run1 = paragraph.add_run("  Investor [First Holder only]: ")
+            run1.bold = True
+            # Add underlined value
+            run2 = paragraph.add_run(str(data['investor']).strip())
+            run2.underline = True
+        
+        # Handle acknowledgement slip fields
+        elif original_text.strip() == 'Mutual Fund :':
+            paragraph.clear()
+            # Add bold label
+            run1 = paragraph.add_run("Mutual Fund : ")
+            run1.bold = True
+            # Add underlined value
+            run2 = paragraph.add_run(str(data['mutual_fund']))
+            run2.underline = True
+        elif 'Folio No :' in original_text and 'Date of Receipt:' in original_text:
+            paragraph.clear()
+            # Add bold "Folio No :" label
+            run1 = paragraph.add_run("Folio No : ")
+            run1.bold = True
+            # Add underlined folio number
+            run2 = paragraph.add_run(str(data['folio_no']))
+            run2.underline = True
+            # Add spacing and Date of Receipt
+            paragraph.add_run("                              		                                       Date of Receipt:	")
+
+def populate_word_document(template_path, data_list, output_path):
+    """Populate Word document with multiple pages of Excel data"""
     try:
-        doc = Document(template_path)
+        # Load the template document
+        template_doc = Document(template_path)
         
-        # Process paragraphs with precise formatting preservation
-        for paragraph in doc.paragraphs:
-            original_text = paragraph.text
-            
-            # Handle "Mutual Fund: " line (Paragraph 3)
-            if original_text.strip() == 'Mutual Fund:':
-                paragraph.clear()
-                # Add bold label
-                run1 = paragraph.add_run("  Mutual Fund: ")
-                run1.bold = True
-                # Add underlined value
-                run2 = paragraph.add_run(data['mutual_fund'])
-                run2.underline = True
-            
-            # Handle "Folio No:* ... PAN:* " line (Paragraph 4)
-            elif 'Folio No:*' in original_text and 'PAN:*' in original_text:
-                paragraph.clear()
-                # Add bold "Folio No:*" label
-                run1 = paragraph.add_run("      Folio No:* ")
-                run1.bold = True
-                # Add underlined folio number
-                run2 = paragraph.add_run(str(data['folio_no']))
-                run2.underline = True
-                # Add spacing
-                paragraph.add_run("                                                                                                          ")
-                # Add bold "PAN:*" label
-                run3 = paragraph.add_run("PAN:* ")
-                run3.bold = True
-                # Add underlined PAN
-                run4 = paragraph.add_run(data['pan'])
-                run4.underline = True
-            
-            # Handle "Investor [First Holder only]:  " line (Paragraph 5)
-            elif original_text.strip() == 'Investor [First Holder only]:':
-                paragraph.clear()
-                # Add bold label
-                run1 = paragraph.add_run("  Investor [First Holder only]: ")
-                run1.bold = True
-                # Add underlined value
-                run2 = paragraph.add_run(data['investor'].strip())
-                run2.underline = True
-            
-            # Handle acknowledgement slip fields
-            elif original_text.strip() == 'Mutual Fund :':
-                paragraph.clear()
-                # Add bold label
-                run1 = paragraph.add_run("Mutual Fund : ")
-                run1.bold = True
-                # Add underlined value
-                run2 = paragraph.add_run(data['mutual_fund'])
-                run2.underline = True
-            elif 'Folio No :' in original_text and 'Date of Receipt:' in original_text:
-                paragraph.clear()
-                # Add bold "Folio No :" label
-                run1 = paragraph.add_run("Folio No : ")
-                run1.bold = True
-                # Add underlined folio number
-                run2 = paragraph.add_run(str(data['folio_no']))
-                run2.underline = True
-                # Add spacing and Date of Receipt
-                paragraph.add_run("                              		                                       Date of Receipt:	")
+        # Create a new document for output
+        output_doc = Document()
         
-        # Save the populated document
-        doc.save(output_path)
-        return True
+        # Copy styles from template to output document
+        for style in template_doc.styles:
+            try:
+                output_doc.styles.add_style(style.name, style.type)
+            except:
+                pass  # Style might already exist
+        
+        for page_index, data in enumerate(data_list):
+            # For each data row, copy the entire template structure
+            template_doc_copy = Document(template_path)
+            
+            # Populate this copy with the current row's data
+            populate_single_page(template_doc_copy, data)
+            
+            # Copy all elements from the populated template to the output document
+            for element in template_doc_copy.element.body:
+                output_doc.element.body.append(element)
+            
+            # Add page break after each page except the last one
+            if page_index < len(data_list) - 1:
+                output_doc.add_page_break()
+        
+        # Save the multi-page document
+        output_doc.save(output_path)
+        return len(data_list)  # Return number of pages created
     except Exception as e:
         print(f"Error populating Word document: {str(e)}")
         return False
@@ -143,20 +186,22 @@ def upload_file():
             os.close(temp_excel_fd)
             file.save(temp_excel_path)
             
-            # Read data from Excel
+            # Read data from Excel (now returns list of dictionaries)
             excel_data = read_excel_data(temp_excel_path)
             
-            if excel_data is None:
-                flash('Error reading Excel file. Please check the file format.')
+            if excel_data is None or len(excel_data) == 0:
+                flash('Error reading Excel file or no data found. Please check the file format.')
                 return redirect(url_for('index'))
             
-            # Create output file
+            # Create output file with page count
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"Populated_ARN_Form_{timestamp}.docx"
+            page_count = len(excel_data)
+            output_filename = f"Populated_ARN_Form_{page_count}pages_{timestamp}.docx"
             output_path = os.path.join(tempfile.gettempdir(), output_filename)
             
-            # Populate Word document
-            if populate_word_document(TEMPLATE_DOCX, excel_data, output_path):
+            # Populate Word document (now handles multiple pages)
+            result = populate_word_document(TEMPLATE_DOCX, excel_data, output_path)
+            if result:
                 # Send the populated document
                 return send_file(output_path, as_attachment=True, 
                                download_name=output_filename,
