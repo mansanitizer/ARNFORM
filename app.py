@@ -36,15 +36,24 @@ def read_excel_data(excel_file_path):
             pan = sheet[f'C{row_num}'].value
             investor = sheet[f'D{row_num}'].value
             
-            # Skip row if all cells are empty
-            if not any([mutual_fund, folio_no, pan, investor]):
+            # Convert to strings and strip whitespace for better empty detection
+            mutual_fund_str = str(mutual_fund).strip() if mutual_fund is not None else ''
+            folio_no_str = str(folio_no).strip() if folio_no is not None else ''
+            pan_str = str(pan).strip() if pan is not None else ''
+            investor_str = str(investor).strip() if investor is not None else ''
+            
+            # Skip row if all cells are empty or contain only 'None'
+            if not any([mutual_fund_str and mutual_fund_str != 'None', 
+                       folio_no_str and folio_no_str != 'None',
+                       pan_str and pan_str != 'None', 
+                       investor_str and investor_str != 'None']):
                 continue
                 
             data = {
-                'mutual_fund': mutual_fund or '',
-                'folio_no': folio_no or '',
-                'pan': pan or '',
-                'investor': investor or ''
+                'mutual_fund': mutual_fund_str,
+                'folio_no': folio_no_str,
+                'pan': pan_str,
+                'investor': investor_str
             }
             data_rows.append(data)
         
@@ -124,28 +133,30 @@ def populate_single_page(doc, data):
 def populate_word_document(template_path, data_list, output_path):
     """Populate Word document with multiple pages of Excel data"""
     try:
-        # Load the template document
-        template_doc = Document(template_path)
+        # For single page, use simpler approach
+        if len(data_list) == 1:
+            doc = Document(template_path)
+            populate_single_page(doc, data_list[0])
+            doc.save(output_path)
+            return 1
         
-        # Create a new document for output
+        # For multiple pages, create new document and copy content properly
         output_doc = Document()
         
-        # Copy styles from template to output document
-        for style in template_doc.styles:
-            try:
-                output_doc.styles.add_style(style.name, style.type)
-            except:
-                pass  # Style might already exist
+        # Clear the default empty paragraph
+        if output_doc.paragraphs:
+            p = output_doc.paragraphs[0]
+            p._element.getparent().remove(p._element)
         
         for page_index, data in enumerate(data_list):
-            # For each data row, copy the entire template structure
-            template_doc_copy = Document(template_path)
+            # Load a fresh template for each page
+            template_doc = Document(template_path)
             
-            # Populate this copy with the current row's data
-            populate_single_page(template_doc_copy, data)
+            # Populate this template with the current row's data
+            populate_single_page(template_doc, data)
             
-            # Copy all elements from the populated template to the output document
-            for element in template_doc_copy.element.body:
+            # Copy all paragraphs and elements from template to output
+            for element in template_doc.element.body:
                 output_doc.element.body.append(element)
             
             # Add page break after each page except the last one
