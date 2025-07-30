@@ -2,6 +2,7 @@
 
 import openpyxl
 from docx import Document
+from docx.enum.text import WD_BREAK
 import os
 from datetime import datetime
 
@@ -183,23 +184,38 @@ def populate_word_document(template_path, data_list, output_path):
             print(f"[DEBUG] Single page document saved successfully")
             return 1
         
-        print(f"[DEBUG] Multi-page mode - creating new document")
-        # For multiple pages, create new document and copy content properly
-        output_doc = Document()
-        print(f"[DEBUG] New output document created with {len(output_doc.paragraphs)} initial paragraphs")
+        print(f"[DEBUG] Multi-page mode - using first page as base")
+        # For multiple pages, start with the first populated template as base
+        print(f"[DEBUG] === Processing Page 1 of {len(data_list)} ===")
+        print(f"[DEBUG] Page data: {data_list[0]}")
         
-        # Clear the default empty paragraph
-        if output_doc.paragraphs:
-            print(f"[DEBUG] Removing default empty paragraph from output document")
-            p = output_doc.paragraphs[0]
-            p._element.getparent().remove(p._element)
-            print(f"[DEBUG] Default paragraph removed. Now has {len(output_doc.paragraphs)} paragraphs")
+        # Load and populate the first page as the base document
+        output_doc = Document(template_path)
+        print(f"[DEBUG] Base template loaded with {len(output_doc.paragraphs)} paragraphs")
+        populate_single_page(output_doc, data_list[0])
+        print(f"[DEBUG] Base template populated for page 1")
         
-        for page_index, data in enumerate(data_list):
+        # Process remaining pages (if any)
+        for page_index in range(1, len(data_list)):
+            data = data_list[page_index]
             print(f"[DEBUG] === Processing Page {page_index + 1} of {len(data_list)} ===")
             print(f"[DEBUG] Page data: {data}")
             
-            # Load a fresh template for each page
+            # Add page break to the last paragraph of the current document
+            print(f"[DEBUG] Adding page break to last paragraph before page {page_index + 1}")
+            if output_doc.paragraphs:
+                last_para = output_doc.paragraphs[-1]
+                run = last_para.add_run()
+                run.add_break(WD_BREAK.PAGE)
+                print(f"[DEBUG] Page break added to existing paragraph")
+            else:
+                # Fallback if no paragraphs exist
+                break_para = output_doc.add_paragraph()
+                run = break_para.add_run()
+                run.add_break(WD_BREAK.PAGE)
+                print(f"[DEBUG] Page break added as new paragraph")
+            
+            # Load a fresh template for this page
             template_doc = Document(template_path)
             print(f"[DEBUG] Fresh template loaded with {len(template_doc.paragraphs)} paragraphs")
             
@@ -230,14 +246,6 @@ def populate_word_document(template_path, data_list, output_path):
             print(f"[DEBUG] Copied {elements_copied} elements from template")
             print(f"[DEBUG] Output document now has {elements_after} elements")
             print(f"[DEBUG] Output document now has {len(output_doc.paragraphs)} paragraphs")
-            
-            # Add page break after each page except the last one
-            if page_index < len(data_list) - 1:
-                print(f"[DEBUG] Adding page break after page {page_index + 1}")
-                output_doc.add_page_break()
-                print(f"[DEBUG] Page break added. Document now has {len(output_doc.paragraphs)} paragraphs")
-            else:
-                print(f"[DEBUG] No page break needed - this is the last page")
         
         print(f"[DEBUG] Final document has {len(output_doc.paragraphs)} paragraphs")
         print(f"[DEBUG] Final document has {len(output_doc.element.body)} body elements")
