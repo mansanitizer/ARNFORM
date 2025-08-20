@@ -63,16 +63,16 @@
                             <tr>
                                 <td>Mutual Fund</td>
                                 <td>Folio No</td>
-                                <td>PAN</td>
+                                <td>Scheme Name</td>
                                 <td>Investor [First Holder only]</td>
                             </tr>
                         </tbody>
                     </table>
-                    <p><strong>Multi-Page Support:</strong> The system processes multiple rows automatically.</p>
                     <ul>
-                        <li><strong>Row 1:</strong> Headers (as shown above)</li>
-                        <li><strong>Row 2+:</strong> Your data (one form page per row)</li>
-                        <li><strong>New template support:</strong> If <code>New ARN Change form.docx</code> is present, additional fields will auto-fill: Date, Place, ARN/EUIN table, and investor names. Defaults: New ARN Code = 310082, New ARN Name = SHAREWAY SECURITIES PRIVATE LIMITED.</li>
+                        <li><strong>Do not include PAN</strong> in any column. PAN is not required for the new form.</li>
+                        <li><strong>If PAN accidentally appears in Column C</strong>, the app will detect it and ignore it for Scheme Name to prevent wrong population.</li>
+                        <li><strong>Multi-page support</strong>: The system groups up to 6 rows per page automatically.</li>
+                        <li><strong>Defaults auto-filled</strong>: New ARN 310082, ARN Name Shareway Securities Pvt Ltd, EUIN No 588234, EUIN Name Ajath Anjanappa, Place Bengaluru, karnataka.</li>
                     </ul>
                 </div>
             </div>
@@ -119,26 +119,17 @@
         });
 
         function handleFile(file) {
-            // Check file type
-            const allowedTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
             const fileExtension = file.name.split('.').pop().toLowerCase();
-            
             if (!['xlsx', 'xls'].includes(fileExtension)) {
                 alert('Please select a valid Excel file (.xlsx or .xls)');
                 return;
             }
-
-            // Update file input
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(file);
             fileInput.files = dataTransfer.files;
-
-            // Show file info
             fileName.textContent = file.name;
             fileSize.textContent = formatFileSize(file.size);
             fileInfo.style.display = 'block';
-            
-            // Enable upload button
             uploadBtn.disabled = false;
             uploadBtn.textContent = 'Generate ARN Form';
         }
@@ -151,7 +142,6 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        // Form submission
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
             uploadBtn.disabled = true;
             uploadBtn.textContent = 'Generating...';

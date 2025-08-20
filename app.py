@@ -8,6 +8,7 @@ import os
 import tempfile
 from datetime import datetime
 from werkzeug.utils import secure_filename
+import re
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this to a random secret key
@@ -31,12 +32,20 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def _looks_like_pan(value: str) -> bool:
+    """Detect if a string looks like a PAN number (e.g., ABCDE1234F)."""
+    if value is None:
+        return False
+    s = str(value).strip().upper().replace(" ", "")
+    return bool(re.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]", s))
+
+
 def read_excel_data(excel_file_path):
     """Read data from Excel file and return as list of dictionaries (one per row).
     Expected columns:
-      A: Mutual Fund
+      A: Scheme Name
       B: Folio No
-      C: Scheme Name (PAN no longer required)
+      C: (optional) Scheme Name or PAN (ignored as scheme if PAN detected)
       D: Investor [First Holder only]
     """
     print(f"[DEBUG] Starting Excel file reading: {excel_file_path}")
@@ -48,59 +57,60 @@ def read_excel_data(excel_file_path):
         print(f"[DEBUG] Sheet name: {sheet.title}")
         print(f"[DEBUG] Max row: {sheet.max_row}, Max column: {sheet.max_column}")
         
-        # Get all data rows (row 1 contains headers, data starts from row 2)
         data_rows = []
         max_row = sheet.max_row
         
         print(f"[DEBUG] Processing rows 2 to {max_row}")
         
-        for row_num in range(2, max_row + 1):  # Start from row 2, go to last row
+        for row_num in range(2, max_row + 1):
             print(f"[DEBUG] --- Processing Row {row_num} ---")
             
             # Columns
-            mutual_fund = sheet[f'A{row_num}'].value
+            scheme_a = sheet[f'A{row_num}'].value
             folio_no = sheet[f'B{row_num}'].value
-            scheme_name = sheet[f'C{row_num}'].value
+            column_c = sheet[f'C{row_num}'].value
             investor = sheet[f'D{row_num}'].value
             
-            print(f"[DEBUG] Raw values: MF='{mutual_fund}' (type: {type(mutual_fund)})")
-            print(f"[DEBUG] Raw values: FN='{folio_no}' (type: {type(folio_no)})")
-            print(f"[DEBUG] Raw values: SCHEME='{scheme_name}' (type: {type(scheme_name)})")
-            print(f"[DEBUG] Raw values: INV='{investor}' (type: {type(investor)})")
+            print(f"[DEBUG] Raw values: A='{scheme_a}' (type: {type(scheme_a)})")
+            print(f"[DEBUG] Raw values: B='{folio_no}' (type: {type(folio_no)})")
+            print(f"[DEBUG] Raw values: C='{column_c}' (type: {type(column_c)})")
+            print(f"[DEBUG] Raw values: D/INV='{investor}' (type: {type(investor)})")
             
-            # Convert to strings and strip whitespace for better empty detection
-            mutual_fund_str = str(mutual_fund).strip() if mutual_fund is not None else ''
+            # Normalize
+            scheme_a_str = str(scheme_a).strip() if scheme_a is not None else ''
             folio_no_str = str(folio_no).strip() if folio_no is not None else ''
-            scheme_name_str = str(scheme_name).strip() if scheme_name is not None else ''
+            col_c_str = str(column_c).strip() if column_c is not None else ''
             investor_str = str(investor).strip() if investor is not None else ''
+
+            # Detect PAN in column C; if not PAN and non-empty, allow as override for scheme
+            pan_from_c = col_c_str.upper().replace(" ", "") if _looks_like_pan(col_c_str) else ''
+            scheme_from_c = '' if pan_from_c else col_c_str
+
+            # Final scheme name: prefer Column C when provided and not PAN; else Column A
+            scheme_name_str = scheme_from_c if scheme_from_c else scheme_a_str
+            # PAN for backward compatibility
+            pan_str = pan_from_c
             
-            print(f"[DEBUG] Processed values: MF='{mutual_fund_str}'")
-            print(f"[DEBUG] Processed values: FN='{folio_no_str}'")
-            print(f"[DEBUG] Processed values: SCHEME='{scheme_name_str}'")
-            print(f"[DEBUG] Processed values: INV='{investor_str}'")
+            print(f"[DEBUG] Processed: SCHEME_A='{scheme_a_str}', SCHEME_C='{scheme_from_c}', SCHEME_FINAL='{scheme_name_str}', PAN_FROM_C='{pan_str}'")
+            print(f"[DEBUG] Processed: FOLIO='{folio_no_str}', INVESTOR='{investor_str}'")
             
-            # Skip row if all cells are empty or contain only 'None'
             has_data = any([
-                mutual_fund_str and mutual_fund_str != 'None', 
+                scheme_name_str and scheme_name_str != 'None',
                 folio_no_str and folio_no_str != 'None',
-                scheme_name_str and scheme_name_str != 'None', 
                 investor_str and investor_str != 'None'
             ])
-            
             print(f"[DEBUG] Row {row_num} has data: {has_data}")
-            
             if not has_data:
                 print(f"[DEBUG] SKIPPING empty row {row_num}")
                 continue
                 
-            # Build row data
             data = {
-                'mutual_fund': mutual_fund_str,
+                # Use a generic header indicator for the new template
+                'mutual_fund': 'Multiple',
                 'folio_no': folio_no_str,
                 'scheme_name': scheme_name_str,
                 'investor': investor_str,
-                # PAN is no longer required; keep empty to maintain backward compatibility if old template is used.
-                'pan': '',
+                'pan': pan_str,
                 # Hardcoded values
                 'old_arn_code': '',
                 'old_arn_name': '',
@@ -108,12 +118,10 @@ def read_excel_data(excel_file_path):
                 'new_arn_name': DEFAULT_NEW_ARN_NAME,
                 'new_sub_arn_code': '',
                 'new_euin_code': DEFAULT_EUIN_CODE,
-                # Hardcoded names
                 'sub_distributor_name': '',
                 'euin_name': DEFAULT_EUIN_NAME,
                 'arn_euin_holder_signature': '',
                 'new_distributor_staff_info': '',
-                # Defaults for new template
                 'place': DEFAULT_PLACE,
             }
             data_rows.append(data)
@@ -125,7 +133,6 @@ def read_excel_data(excel_file_path):
         print(f"[DEBUG] ERROR reading Excel file: {str(e)}")
         return None
     finally:
-        # Ensure workbook is properly closed
         if workbook:
             workbook.close()
             print(f"[DEBUG] Excel workbook closed")
