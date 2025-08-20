@@ -13,13 +13,20 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
-# Check if required template file exists
-if [ ! -f "Request for Change of Broker.docx" ]; then
-    echo "ERROR: Template file 'Request for Change of Broker.docx' not found!"
-    echo "Please ensure the Word template is in the same directory."
-    echo
-    exit 1
+# Determine template to use (prefer new template)
+TEMPLATE=""
+if [ -f "New ARN Change form.docx" ]; then
+  TEMPLATE="New ARN Change form.docx"
+elif [ -f "Request for Change of Broker.docx" ]; then
+  TEMPLATE="Request for Change of Broker.docx"
+else
+  echo "ERROR: No template found!"
+  echo "Please add either 'New ARN Change form.docx' or 'Request for Change of Broker.docx' to the project root."
+  echo
+  exit 1
 fi
+
+echo "Using template: $TEMPLATE"
 
 # Activate virtual environment
 echo "[1/3] Activating virtual environment..."
