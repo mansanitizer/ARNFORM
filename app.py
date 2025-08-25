@@ -25,7 +25,7 @@ DEFAULT_NEW_ARN_CODE = "310082"
 DEFAULT_NEW_ARN_NAME = "Shareway Securities Pvt Ltd"
 DEFAULT_EUIN_CODE = "588234"
 DEFAULT_EUIN_NAME = "Ajath Anjanappa"
-DEFAULT_PLACE = "bengaluru, karnataka"
+DEFAULT_PLACE = "Bengaluru, Karnataka"
 
 
 def allowed_file(filename):
@@ -40,13 +40,24 @@ def _looks_like_pan(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]", s))
 
 
+def _format_euin(euin_code: str) -> str:
+    """Format EUIN code with 'E' prefix."""
+    if not euin_code:
+        return ""
+    # Remove any existing 'E' prefix and add it back
+    clean_code = str(euin_code).strip().replace("E", "").replace("e", "")
+    return f"E{clean_code}" if clean_code else ""
+
+
 def read_excel_data(excel_file_path):
     """Read data from Excel file and return as list of dictionaries (one per row).
     Expected columns:
       A: Scheme Name
       B: Folio No
-      C: (optional) Scheme Name or PAN (ignored as scheme if PAN detected)
+      C: PAN (optional, ignored for scheme name)
       D: Investor [First Holder only]
+      E: Old ARN Number
+      F: Old ARN Name
     """
     print(f"[DEBUG] Starting Excel file reading: {excel_file_path}")
     workbook = None
@@ -70,17 +81,23 @@ def read_excel_data(excel_file_path):
             folio_no = sheet[f'B{row_num}'].value
             column_c = sheet[f'C{row_num}'].value
             investor = sheet[f'D{row_num}'].value
+            old_arn_number = sheet[f'E{row_num}'].value
+            old_arn_name = sheet[f'F{row_num}'].value
             
             print(f"[DEBUG] Raw values: A='{scheme_a}' (type: {type(scheme_a)})")
             print(f"[DEBUG] Raw values: B='{folio_no}' (type: {type(folio_no)})")
             print(f"[DEBUG] Raw values: C='{column_c}' (type: {type(column_c)})")
-            print(f"[DEBUG] Raw values: D/INV='{investor}' (type: {type(investor)})")
+            print(f"[DEBUG] Raw values: D='{investor}' (type: {type(investor)})")
+            print(f"[DEBUG] Raw values: E='{old_arn_number}' (type: {type(old_arn_number)})")
+            print(f"[DEBUG] Raw values: F='{old_arn_name}' (type: {type(old_arn_name)})")
             
             # Normalize
             scheme_a_str = str(scheme_a).strip() if scheme_a is not None else ''
             folio_no_str = str(folio_no).strip() if folio_no is not None else ''
             col_c_str = str(column_c).strip() if column_c is not None else ''
             investor_str = str(investor).strip() if investor is not None else ''
+            old_arn_number_str = str(old_arn_number).strip() if old_arn_number is not None else ''
+            old_arn_name_str = str(old_arn_name).strip() if old_arn_name is not None else ''
 
             # Detect PAN in column C; if not PAN and non-empty, allow as override for scheme
             pan_from_c = col_c_str.upper().replace(" ", "") if _looks_like_pan(col_c_str) else ''
@@ -93,6 +110,7 @@ def read_excel_data(excel_file_path):
             
             print(f"[DEBUG] Processed: SCHEME_A='{scheme_a_str}', SCHEME_C='{scheme_from_c}', SCHEME_FINAL='{scheme_name_str}', PAN_FROM_C='{pan_str}'")
             print(f"[DEBUG] Processed: FOLIO='{folio_no_str}', INVESTOR='{investor_str}'")
+            print(f"[DEBUG] Processed: OLD_ARN_NUM='{old_arn_number_str}', OLD_ARN_NAME='{old_arn_name_str}'")
             
             has_data = any([
                 scheme_name_str and scheme_name_str != 'None',
@@ -111,13 +129,14 @@ def read_excel_data(excel_file_path):
                 'scheme_name': scheme_name_str,
                 'investor': investor_str,
                 'pan': pan_str,
-                # Hardcoded values
-                'old_arn_code': '',
-                'old_arn_name': '',
+                # Old ARN details from Excel
+                'old_arn_code': old_arn_number_str,
+                'old_arn_name': old_arn_name_str,
+                # Hardcoded new ARN values
                 'new_arn_code': DEFAULT_NEW_ARN_CODE,
                 'new_arn_name': DEFAULT_NEW_ARN_NAME,
                 'new_sub_arn_code': '',
-                'new_euin_code': DEFAULT_EUIN_CODE,
+                'new_euin_code': _format_euin(DEFAULT_EUIN_CODE),
                 'sub_distributor_name': '',
                 'euin_name': DEFAULT_EUIN_NAME,
                 'arn_euin_holder_signature': '',
@@ -247,7 +266,13 @@ def _replace_text_anywhere(doc, replacements):
             for token in tokens:
                 token_norm = str(token).strip()
                 if current_norm == token_norm:
-                    t.text = f"{token_norm} {val}"
+                    # Special handling for EUIN to avoid double "E"
+                    if 'EUIN No.: E' in token_norm:
+                        # Replace the entire "EUIN No.: E" with "EUIN No.: E588234"
+                        t.text = f"EUIN No.: {val}"
+                    else:
+                        # Normal replacement
+                        t.text = f"{token_norm} {val}"
                     replaced_counts[token_norm] = replaced_counts.get(token_norm, 0) + 1
     print(f"[DEBUG] Textbox replacements: {replaced_counts}")
 
@@ -282,10 +307,10 @@ def populate_single_page_new_form(doc, data):
     # Replace text (left and right) using safe token replacements
     _replace_text_anywhere(doc, {
         ('New ARN-.', 'New ARN:', 'New ARN -'): data.get('new_arn_code', DEFAULT_NEW_ARN_CODE),
-        ("Sub-Distributor's ARN", "Sub-Distributor’s ARN"): data.get('new_sub_arn_code', ''),
-        'EUIN No.:': data.get('new_euin_code',''),
+        ("Sub-Distributor's ARN", "Sub-Distributor's ARN"): data.get('new_sub_arn_code', ''),
+        ('EUIN No.: E', 'EUIN No.:', 'EUIN No:', 'EUIN No', 'EUIN'): data.get('new_euin_code', _format_euin(DEFAULT_EUIN_CODE)),
         'ARN Name:': data.get('new_arn_name', DEFAULT_NEW_ARN_NAME),
-        ("Sub-Distributor's name :", "Sub-Distributor’s name :"): data.get('sub_distributor_name', ''),
+        ("Sub-Distributor's name :", "Sub-Distributor's name :"): data.get('sub_distributor_name', ''),
         'EUIN Name:': data.get('euin_name', ''),
         ('Signature of ARN/EUIN Holder:', 'Signature of ARN/ EUIN Holder:'): data.get('arn_euin_holder_signature', ''),
         (
@@ -313,7 +338,7 @@ def populate_single_page_new_form(doc, data):
             new_arn_code = str(data.get('new_arn_code', DEFAULT_NEW_ARN_CODE)).strip()
             new_arn_name = str(data.get('new_arn_name', DEFAULT_NEW_ARN_NAME)).strip()
             new_sub_arn = str(data.get('new_sub_arn_code', '')).strip()
-            new_euin = str(data.get('new_euin_code', '')).strip()
+            new_euin = str(data.get('new_euin_code', _format_euin(DEFAULT_EUIN_CODE))).strip()
 
             row = tables[1].rows[1]
             row.cells[0].text = old_arn_code
@@ -374,10 +399,10 @@ def populate_single_page_new_form_chunk(doc, data_chunk):
     # Replace text (left and right) using safe token replacements
     _replace_text_anywhere(doc, {
         ('New ARN-.', 'New ARN:', 'New ARN -'): first.get('new_arn_code', DEFAULT_NEW_ARN_CODE),
-        ("Sub-Distributor's ARN", "Sub-Distributor’s ARN"): first.get('new_sub_arn_code', ''),
-        'EUIN No.:': first.get('new_euin_code',''),
+        ("Sub-Distributor's ARN", "Sub-Distributor's ARN"): first.get('new_sub_arn_code', ''),
+        ('EUIN No.: E', 'EUIN No.:', 'EUIN No:', 'EUIN No', 'EUIN'): first.get('new_euin_code', _format_euin(DEFAULT_EUIN_CODE)),
         'ARN Name:': first.get('new_arn_name', DEFAULT_NEW_ARN_NAME),
-        ("Sub-Distributor's name :", "Sub-Distributor’s name :"): first.get('sub_distributor_name', ''),
+        ("Sub-Distributor's name :", "Sub-Distributor's name :"): first.get('sub_distributor_name', ''),
         'EUIN Name:': first.get('euin_name', ''),
         ('Signature of ARN/EUIN Holder:', 'Signature of ARN/ EUIN Holder:'): first.get('arn_euin_holder_signature', ''),
         (
@@ -408,7 +433,7 @@ def populate_single_page_new_form_chunk(doc, data_chunk):
             row.cells[2].text = str(first.get('new_arn_code', DEFAULT_NEW_ARN_CODE))
             row.cells[3].text = str(first.get('new_arn_name', DEFAULT_NEW_ARN_NAME))
             row.cells[4].text = str(first.get('new_sub_arn_code',''))
-            row.cells[5].text = str(first.get('new_euin_code',''))
+            row.cells[5].text = str(first.get('new_euin_code', _format_euin(DEFAULT_EUIN_CODE)))
         except Exception as e:
             print(f"[DEBUG] Could not fill Table 1: {e}")
 
